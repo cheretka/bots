@@ -1,0 +1,11 @@
+tensorflow==2.2.0
+numpy
+scipy==1.4.1
+ipykernel
+jupyter
+ipython
+opencv-python
+cupy
+Keras==2.3.1
+seaborn
+matplotlib
