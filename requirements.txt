@@ -5,7 +5,5 @@ ipykernel
 jupyter
 ipython
 opencv-python
-cupy
-Keras==2.3.1
-seaborn
 matplotlib
+orjson
