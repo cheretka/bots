@@ -1,4 +1,3 @@
-from env import Environment
 from agent import Agent
 from websockets import Websocket
 import orjson
@@ -10,13 +9,13 @@ async def start(game_code, player_name):
         while True:
             # Wait for state
             state: Data = await web.receive()
-            # Update env
-            env.set_state(orjson.loads(state))
+            # Update agent with state
+            agent.set_env(orjson.loads(state))
             # Choose action
             action = agent.choose_action()
             # Send action
-            await web.send(orjson.dumps(env.parse_action(action)).decode("utf-8"))
-            # Update agent
+            await web.send(orjson.dumps(action).decode("utf-8"))
+            # Update agent learning
             agent.update()
 
 
@@ -26,11 +25,8 @@ game_code = input()
 print("Now name (｡◕‿‿◕｡)")
 player_name = input()
 
-# Create env
-env = Environment()
-
 # Create agent
-agent = Agent(env.get_legal_actions())
+agent = Agent()
 
 # Send request to the server to join a game
 loop = asyncio.new_event_loop()
