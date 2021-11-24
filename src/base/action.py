@@ -1,13 +1,15 @@
 from __future__ import annotations
 from typing import List
+from abc import ABCMeta, abstractclassmethod, abstractmethod
 
-class Action:
+class Action(metaclass=ABCMeta):
 	_all = None
 	
+	@abstractmethod
 	def encode(self):...
 	
-	@classmethod
+	@abstractclassmethod
 	def get_all(cls)->List[Action]:...
 	
-	@classmethod
+	@abstractclassmethod
 	def decode(cls, data)->Action:...

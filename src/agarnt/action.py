@@ -2,6 +2,8 @@ from __future__ import annotations
 from ..base.action import Action
 from enum import Enum
 from typing import List, Dict
+
+
 class AgarntAction(Action, Enum):
 	
 	L = 0
