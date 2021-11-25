@@ -4,6 +4,7 @@ from gameproxy import connection_proxy
 from agent import Agent
 import asyncio
 import concurrent.futures as cf
+import functools
 
 ENV_VARS = {
 	"name":"",
@@ -14,8 +15,7 @@ ENV_VARS = {
 }
 
 
-@connection_proxy
-async def make_env(server: str, name: str, game_type: str, 
+def make_env(server: str, name: str, game_type: str, 
 				   bot_name: str, session_id: Optional[str] =None,
 				   join: bool =False) -> WebSocketClientProtocol:
 	"""Makes the environment, that is, creates or joins to game based on provided server URL, name of game and session identifier
@@ -34,6 +34,17 @@ async def make_env(server: str, name: str, game_type: str,
 	Returns:
 		WebSocketClientProtocol: Obtained connection
 	"""
+	future = asyncio.tasks.ensure_future(__make_env(server, name, game_type, bot_name, session_id, join))
+	future.add_done_callback(functools.partial(print, "Successfully connected with game"))
+	for future in cf.as_completed([future]):
+		socket: WebSocketClientProtocol = future.result()
+		print(f"Connection at: {socket.host}")
+  
+@connection_proxy
+async def __make_env(server: str, name: str, game_type: str, 
+				   bot_name: str, session_id: Optional[str] =None,
+				   join: bool =False) -> WebSocketClientProtocol:
+
 	if join:
 		if not session_id: 
 			raise ValueError("Provided session identifier is empty, if you want to join to exisiting game, provide valid session id")
@@ -52,7 +63,7 @@ async def make_env(server: str, name: str, game_type: str,
 		async with connect(url) as web_socket:
 			session_id = await web_socket.recv()
 			await asyncio.sleep(0)
-			return await make_env(server, name, game_type, bot_name, session_id, True)
+			return await __make_env(server, name, game_type, bot_name, session_id, True)
 
 def __run_bot(random_bot_class: Type[Agent], server: str, session_id: str, int_id: int, **agent_kwds):
 	"""Helper function for bot execution
@@ -63,7 +74,7 @@ def __run_bot(random_bot_class: Type[Agent], server: str, session_id: str, int_i
 		session_id (str): session identifier
 		int_id (int): identifier of bot object
 	"""
-    
+	
 	url = f"{server}/join_to_game?player_name={random_bot_class.__name__}_{int_id}&session_id={session_id}"
 	loop = asyncio.get_event_loop()
  
@@ -81,7 +92,7 @@ def __run_bot(random_bot_class: Type[Agent], server: str, session_id: str, int_i
 				_ = bot.choose_action()
 				done = bot.is_dead
 				await asyncio.sleep(0.1)
-    
+	
 		acting_task = asyncio.ensure_future(bot_loop())
 		receive_task = asyncio.ensure_future(bot.handle_new_states())
 		_, pending = await asyncio.wait([receive_task, acting_task], return_when=asyncio.FIRST_COMPLETED)
