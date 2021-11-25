@@ -11,6 +11,7 @@ from functools import partial
 class __GameConnectionHandler:
 	__socket: WebSocketClientProtocol =None
 
+
 class __ConnectionProxy:
 	
 	"""Defines a proxy class to handle implicit communication between
@@ -43,27 +44,31 @@ class __ConnectionProxy:
 
 
 class __SendProxy:
-	def __init__(self, action_getter) -> None:
+	def __init__(self, action_getter: Callable[..., Action]) -> None:
 		self.__action_getter = action_getter
 	
-	async def __call__(self, *args: Any, **kwds: Any) -> Any:
+	def __call__(self, *args: Any, **kwds: Any) -> Any:
 		action: Action = self.__action_getter(*args, **kwds)
-		await __GameConnectionHandler.__socket.send(gzip.compress(orjson.dumps(action.encode())))
-		await asyncio.sleep(0)
+		loop = asyncio.get_event_loop()
+		async def __send():
+			await __GameConnectionHandler.__socket.send(gzip.compress(orjson.dumps(action.encode())))
+			await asyncio.sleep(0)
+		loop.run_until_complete(__send)
 		return action
 
 	def __get__(self, instance, cls=None):
 		partial(self.__call__, instance)
 	
+ 
 class __ReceiveProxy:
-	def __init__(self, new_message_handler) -> None:
+	def __init__(self, new_message_handler: Callable[..., Coroutine[Any, Any, None]]) -> None:
 		self.__handler = new_message_handler
 	
 	async def __call__(self, *args: Any, **kwds: Any) -> Any:
 		while True:
 			message: Data =await __GameConnectionHandler.__socket.recv()
 			await asyncio.sleep(0)
-			self.__handler(orjson.loads(gzip.decompress(message)))
+			await self.__handler(orjson.loads(gzip.decompress(message)))
 
 	def __get__(self, instance, cls=None):
 		partial(self.__call__, instance)
