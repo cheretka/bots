@@ -18,7 +18,8 @@ class AgarntAction(Action, Enum):
 	RU = 7
 	
 	__KEYS = ["L", "D", "R", "U"]
-	
+
+ 
 	@classmethod
 	def get_all(cls)->List[AgarntAction]:
 		"""Returns  a list of actions available in agarnt game
@@ -30,26 +31,27 @@ class AgarntAction(Action, Enum):
 			cls._all = list(map(lambda item:item[1], filter(lambda item: not "KEYS" in item[0], cls.__members__.items())))
 		return cls._all
 
-	def encode(self) -> Dict[str, bool]:
+	def encode(self) -> Dict[str, Dict[str, bool]]:
 		"""Encodes single action into proper dictionary, that is understandable for the server-side
 
 		Returns:
-			Dict[str, bool]: Dictionary that contains boolean flags for each available basic action (Left, Down, Right, Up) -> if action is complex, more than one basic action is active.
+			Dict[str, Dict[str, bool]]: Dictionary that contains boolean flags for each available basic action (Left, Down, Right, Up) -> if action is complex, more than one basic action is active.
 		"""
 		name = self.name
 		d = {k:False for k in AgarntAction.__KEYS.value}
 		for char in name: d[char] = True
-		return d
+		return {"directions" : d}
 	
 	@classmethod
-	def decode(cls, d: Dict[str, bool]):
+	def decode(cls, d: Dict[str, Dict[str, bool]]):
 		"""Decodes obtained dictionary into AgarntAction variable
 
 		Args:
-			d (Dict[str, bool]): Obtained, decompressed and de-jsonized data obtained from server
+			d (Dict[str, Dict[str, bool]]): Obtained, decompressed and de-jsonized data obtained from server
 
 		Returns:
 			AgarntAction: Decoded action
 		"""
+		d = d["directions"]
 		name = "".join(map(lambda item: item[0],filter(lambda item:item[1], d.items())))
 		return AgarntAction[name]
