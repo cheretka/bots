@@ -53,5 +53,5 @@ class AgarntAction(Action, Enum):
 			AgarntAction: Decoded action
 		"""
 		d = d["directions"]
-		name = "".join(map(lambda item: item[0],filter(lambda item:item[1], d.items())))
+		name = "".join(map(lambda item: item[0],sorted(filter(lambda item:item[1], d.items()), key=lambda x: 0 if x[0] in ["L", "R"] else 1 )))
 		return AgarntAction[name]
