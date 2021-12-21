@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractclassmethod, abstractmethod
-from asyncio.tasks import sleep
+from time import sleep
 from concurrent.futures.thread import ThreadPoolExecutor
 import concurrent.futures as cf
 import logging
@@ -53,7 +53,10 @@ class _ThreadedAsyncioExecutor(Thread):
 				coro.close()
 			except:
 				pass
-		
+		for coro in asyncio.all_tasks(self._loop):
+			coro.cancel()
+		sleep(1)
+		print("Closing a loop")
 		self._loop.close()		
 		
 			

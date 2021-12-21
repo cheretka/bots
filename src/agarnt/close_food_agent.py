@@ -20,7 +20,7 @@ class CloseFoodAgent(Agent):
         # remove those bigger than you
             smaller_enemies = []
             for e in enemies:
-                if e['r'] <= player['r']:
+                if e['r'] < player['r']:
                     smaller_enemies.append(e)
             # search for the nearest one - near_enemy
             near_enemy = next(iter(smaller_enemies), None)
