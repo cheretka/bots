@@ -4,12 +4,11 @@ import threading
 from typing import List, Optional, Type
 import logging
 from websockets.legacy.client import connect, WebSocketClientProtocol
-from ._gameproxy import connection_proxy as __connection_proxy, cleanup as _cleanup
+from ._gameproxy import connection_proxy as __connection_proxy, cleanup, Event as _Event
 from .agent import Agent
 from .action import Action
 import asyncio
 import concurrent.futures as cf
-from multiprocessing import Pipe
 from time import sleep
 
 logger = logging.getLogger(__name__) 
@@ -22,35 +21,8 @@ __ENV_VARS = {
 	"bot_name":""
 }
 
-class Event(object):
-
-	def __init__(self):
-		self._read_fd, self._write_fd = Pipe()
-		
-
-	def wait(self, timeout=None):
-		return self._read_fd.poll(timeout)
-	
-	def set(self):
-		if not self.is_set():
-			self._write_fd.send(b"1")
-
-	def clear(self):
-		if self.is_set():
-			self._read_fd.recv()
-
-	def is_set(self):
-		return self.wait(0)
-
-	def __del__(self):
-		self._read_fd.close()
-		self._write_fd.close()
- 
-	def fileno(self): return self._read_fd.fileno()
-
-
 class _Bots_Manager:
-	def __init__(self, executor: ProcessPoolExecutor, futures: List[Future], events: List[Event]) -> None:
+	def __init__(self, executor: ProcessPoolExecutor, futures: List[Future], events: List[_Event]) -> None:
 		self.__executor = executor
 		self.__futures = futures
 		self.__events = events
@@ -66,12 +38,13 @@ class _Bots_Manager:
 		for future in self.__futures:
 			logger.info("If result is present, obtain it from the future")
 			if future.done():
+				print("Obtain result of future at: ", hex(id(future)))
 				future.result()
+		print("Manager is about to shutdown...")
 		self.__executor.shutdown()
 
 
 def get_session_id(): return __ENV_VARS["session_id"]
-
 
 def make_env(server: str, name: str, game_type: str, 
 				   bot_name: str, session_id: Optional[str] =None,
@@ -119,7 +92,7 @@ async def __join(server: str, session_id: str, bot_name: str):
 	if not session_id: 
 		raise ValueError("Provided session identifier is empty, if you want to join to exisiting game, provide valid session id")
 
-	url = f"{server}/join_to_game?player_name={bot_name}&session_id={session_id}"
+	url = f"{server}/join_to_game?player_name={bot_name}&session_id={session_id}&is_spectator=False"
  
 	socket = await connect(url)
  
@@ -139,21 +112,33 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 		int_id (int): identifier of bot object
 	"""
 	
-	url = f"{server}/join_to_game?player_name={bot_class.__name__}_{int_id}&session_id={session_id}"
+	url = f"{server}/join_to_game?player_name={bot_class.__name__}_{int_id}&session_id={session_id}&is_spectator=False"
  
 	def wrapper():
 		"""Wrapper for networking tasks execution during bot interaction with game.
 		"""
+		from sys import platform
+		if platform == "win32":
+			import win32api,win32process,win32con
+
+			pid = win32api.GetCurrentProcessId()
+			handle = win32api.OpenProcess(win32con.PROCESS_ALL_ACCESS, True, pid)
+			win32process.SetPriorityClass(handle, win32process.THREAD_PRIORITY_LOWEST)
+		else:
+			from os import nice
+			nice(20)
+			
+
 		_ = __connection_proxy(connect)(url)
 		bot = bot_class(**agent_kwds)
 
 
 		def poll_and_clean(*args, **kwargs):
-			while not evt.is_set():...
+			while not evt.is_set():sleep(0.1)
 			
 			else: 
 				print(f"Cleaning up bot. No {int_id}")
-				_cleanup()
+				cleanup()
 			
 		conn_cleaner = threading.Thread(daemon=True, target=poll_and_clean)
 		def bot_loop():
@@ -162,12 +147,19 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 			conn_cleaner.start()
 			bot.handle_new_states(None)
 			done = False
-			while not done and not evt.is_set():
-				_ = bot.choose_action()
-				print(f"Chosen action {_} goes brr")
-				done = bot.is_done
-				sleep(0.1)
-			else: logger.info(f"BOT: {type(bot)} is dead")
+			sleep(0.1)
+   
+			try:
+				while not done and not evt.is_set():
+					sleep(0.1)
+					
+					_ = bot.choose_action()
+					print(f"Chosen action {_} goes brr")
+					done = bot.is_done
+				else: logger.info(f"BOT: {type(bot)} is dead")
+			except Exception as e:
+				print(e)
+				print(f"BOT: {type(bot)} is dead")
 		bot_loop()
 	wrapper()
 	
@@ -183,10 +175,10 @@ def spawn_bots(server: str, session_id: str, bot_class: Type[Agent], count: int,
 	"""
 	
 	executor = ProcessPoolExecutor(max_workers=count)
-	_events = [Event() for _ in range(count)]
+	_events = [_Event() for _ in range(count)]
 	_futures = {num: executor.submit(__run_bot, bot_class, server, session_id, num, _events[num], **agent_kwds) for num in range(count)}
 	for num, future in (_futures.items()): future.add_done_callback(lambda _: logger.info(f"Process of bot No. {num} is finished"))
 	
 	return _Bots_Manager(executor, list(_futures.values()), _events)
 	
-__all__ = [Agent, Action, get_session_id, spawn_bots, make_env]
+__all__ = [Agent, Action, get_session_id, spawn_bots, make_env, cleanup]
