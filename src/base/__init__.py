@@ -67,7 +67,7 @@ def make_env(server: str, name: str, game_type: str,
 	"""
 	
 
-	socket = __make_env(server, name, game_type, bot_name, session_id, join)
+	socket: WebSocketClientProtocol = __make_env(server, name, game_type, bot_name, session_id, join)
 	
 	print(f"Established connection at: {socket.host}")
   
@@ -102,7 +102,7 @@ async def __join(server: str, session_id: str, bot_name: str):
  
 	return socket
 
-def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int, evt: threading.Event, **agent_kwds):
+def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int, evt: _Event, **agent_kwds):
 	"""Helper function for bot execution
 
 	Args:
@@ -128,8 +128,8 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 			from os import nice
 			nice(20)
 			
-
-		_ = __connection_proxy(connect)(url)
+		async def connect_to_url(url): return await connect(url)
+		_ = __connection_proxy(connect_to_url)(url)
 		bot = bot_class(**agent_kwds)
 
 
