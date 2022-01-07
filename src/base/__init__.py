@@ -22,12 +22,20 @@ __ENV_VARS = {
 }
 
 class _Bots_Manager:
+	"""Definition of _Bots_Manager to take care of spawned agents.
+	"""
+    
 	def __init__(self, executor: ProcessPoolExecutor, futures: List[Future], events: List[_Event]) -> None:
 		self.__executor = executor
 		self.__futures = futures
 		self.__events = events
   
 	def terminate(self, timeout=10):
+		"""Terminates BotsManager object after given timeout. Sets events to stop managed processes, and collects concurrent.futures.Future objects.
+
+		Args:
+			timeout (int, optional): time to wait. Defaults to 10.
+		"""
 		for event in self.__events:
 			event.set()
 
@@ -38,7 +46,7 @@ class _Bots_Manager:
 		for future in self.__futures:
 			logger.info("If result is present, obtain it from the future")
 			if future.done():
-				print("Obtain result of future at: ", hex(id(future)))
+				print("Obtain the result of future at: ", hex(id(future)))
 				future.result()
 		print("Manager is about to shutdown...")
 		self.__executor.shutdown()
@@ -89,6 +97,19 @@ async def __make_env(server: str, name: str, game_type: str,
 	return await __join(server, session_id, bot_name)
 
 async def __join(server: str, session_id: str, bot_name: str):
+	"""Joins as bot to a session of given server.
+
+	Args:
+		server (str): websocket address of server.
+		session_id (str): id of session to join, usually obtained from the make_env function
+		bot_name (str): the name of the bot
+
+	Raises:
+		ValueError: if session_id is None or empty
+
+	Returns:
+		WebSocketClientProtocl: wrapped websocket to communicate with server.
+	"""
 	if not session_id: 
 		raise ValueError("Provided session identifier is empty, if you want to join to exisiting game, provide valid session id")
 
@@ -134,6 +155,8 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 
 
 		def poll_and_clean(*args, **kwargs):
+			"""Polls a state of stored event and closes bot process if a state is set.
+			"""
 			while not evt.is_set():sleep(0.1)
 			
 			else: 

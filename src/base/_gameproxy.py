@@ -2,12 +2,11 @@ from __future__ import annotations
 from abc import ABCMeta, abstractmethod
 from asyncio.events import AbstractEventLoop
 from asyncio.tasks import Task
-from time import sleep, time
 import concurrent.futures as cf
 import logging
-from typing import Any, Callable, Coroutine, Dict, List
+from typing import Any, Callable, Coroutine, Dict, List, Type
 from websockets.legacy.client import WebSocketClientProtocol
-from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from websockets.typing import Data
 from .action import Action
 import orjson
@@ -20,34 +19,57 @@ import traceback
 
 
 class Event(object):
-
+	"""Implementation of Event class, that is based on "pipes" system
+	"""
 	def __init__(self):
 		self._read_fd, self._write_fd = Pipe()
-		
-
+	
 	def wait(self, timeout=None):
+		"""Waits for a given timeout and get information about the state of the Event
+		
+		Keyword arguments:
+		timeout -- time in seconds to wait
+		Returns: True, if the Event object is set after provided timeout, False otherwise
+  
+		"""
+		
 		return self._read_fd.poll(timeout)
 	
 	def set(self):
+		"""Sets the state of the Event object.
+		"""
 		if not self.is_set():
 			self._write_fd.send(b"1")
 
 	def clear(self):
+		"""Unsets the state of the Event object.
+		"""
 		if self.is_set():
 			self._read_fd.recv()
 
 	def is_set(self):
+		"""Checks if the Event object is in set state.
+		Returns: see wait method
+		"""
 		return self.wait(0)
 
 	def __del__(self):
+		"""Closes the "pipes" system of the Event
+		"""
 		self._read_fd.close()
 		self._write_fd.close()
  
-	def fileno(self): return self._read_fd.fileno()
+	def fileno(self): 
+		"""Returns the file descriptor of obtained "pipes" system.
+
+		Returns:
+			int: a file descriptor of the one of the end of pipe.
+		"""
+		return self._read_fd.fileno()
  
 
 class _ThreadedAsyncioExecutor(Thread):
-	"""	Defines an executor to take control over submitting tasks to the 
+	"""	Defines an executor to take a control over submitted tasks to the asyncio.
 	
 	"""
 	
@@ -63,14 +85,36 @@ class _ThreadedAsyncioExecutor(Thread):
 		self._loop.set_exception_handler(lambda loop, context:partial(self.__handle_errors)(loop, context))
 	
 	@property
-	def stopped(self): return self._stopped
+	def stopped(self): 
+		"""Returns information whether or not the thread is stopped.
+
+		Returns:
+			bool: the "stopped" state of thread.
+		"""
+		return self._stopped.is_set()
 	
+	@property
+	def started(self) -> bool: 
+		"""Returns information whether or not the thread is started.
+
+		Returns:
+			bool: the "started" state of thread.
+		"""
+		return self._started.is_set()
+ 
 	def _set_stopped(self): 
+		"""Sets the "stopped" Event of ThreadedAsyncioExecutor.
+		"""
 		with self._lock:
-			print("stopped executor")
 			self._stopped.set()
  	
 	def __handle_errors(self, loop: AbstractEventLoop, context: Dict[str, Any]):
+		"""Error handler that is run by asyncio every time the exception in a coroutine occurs.
+
+		Args:
+			loop (AbstractEventLoop): active event-loop
+			context (Dict[str, Any]): asyncio exception context
+		"""
 		exception: Exception =context.get("exception", None)
   
 		if exception:
@@ -87,25 +131,49 @@ class _ThreadedAsyncioExecutor(Thread):
 		if loop.is_running():
 			self.stop()
  
-	def register_exception(self, exception: Exception, handler: Callable[..., Any]):
+	def register_exception(self, exception: Type[Exception], handler: Callable[..., Any]):
+		"""Registers a handler for a given exception type
+
+		Args:
+			exception (Type[Exception]): type of exception to store in handlers' dictionary.
+			handler (Callable[..., Any]): callable to call after that a given type of exception occurred.
+		"""
 		if exception in self.__exception_handlers:
 			self.__exception_handlers[exception].append(handler)
 		else:
 			self.__exception_handlers[exception] = [handler]
   
 	def submit(self, coro: Coroutine[Any, Any, Any]):
+		"""Submits coroutine into wrapped asyncio event loop.
+
+		Args:
+			coro (Coroutine[Any, Any, Any]): coroutine to run.
+
+		Returns:
+			Tuple[Task, Future]: returns Task and Task wrapped by concurrent.futures.Future
+		"""
 		task = self._loop.create_task(coro)
 		self.__tasks.append(task)
-		fut = asyncio.run_coroutine_threadsafe(self.schedule_subscription_task(task), self._loop)
+		fut = asyncio.run_coroutine_threadsafe(self.__schedule_subscription_task(task), self._loop)
 		fut.add_done_callback(lambda _: self.__tasks.remove(task))
 		return task, fut
 	
-	async def schedule_subscription_task(self, task: Task):
+	async def __schedule_subscription_task(self, task: Task):
+		"""Schedules given task to await.
+
+		Args:
+			task (Task): task to await
+
+		Returns:
+			Any: value collected from Task object.
+		"""
 		result = await task
 		await asyncio.sleep(0)
 		return result
 	
 	def run(self):
+		"""Runs ThreadedAsyncioExecutor.
+		"""
 		try:
 			self._loop.run_forever()
 		finally:
@@ -113,10 +181,14 @@ class _ThreadedAsyncioExecutor(Thread):
 			self._loop.close()		
    
 	def cancel_tasks(self):
+		"""Cancels stored tasks.
+		"""
 		[task.cancel() for task in self.__tasks]
  
 	def stop(self):
-		if self.stopped.is_set(): return
+		"""Stops ThreadedAsyncioExecutor object. Cancels all coroutines that are queued in event-loop system and then stops an event-loop. 
+		"""
+		if self.stopped: return
   
 		with self._lock:
 			print("Cleaning thread...")
@@ -140,36 +212,58 @@ class _ThreadedAsyncioExecutor(Thread):
 			fut.add_done_callback(lambda _: self._set_stopped())
 			cf.wait([fut])
 			fut.result()
-			self._loop.stop()
-
-			
-				
+			self._loop.stop()				
 
 class __GameConnectionHandler:
-	
+	"""Definition of a handler of a connection with a game-server.
+	"""
 	__socket: WebSocketClientProtocol =None
 	__coro_thread: _ThreadedAsyncioExecutor = _ThreadedAsyncioExecutor()
 	__host: str= ""
 	__proxies: List[_Proxy] = []
 	
 	@property 
-	def proxies(self): return self.__proxies
+	def proxies(self): 
+		"""Returns current list of active proxies.
+
+		Returns:
+			List[_Proxy]: list of active proxies.
+		"""
+		return self.__proxies
  
 	@property
 	def coro_executor(self): 
-		if not self.__coro_thread._started.is_set(): 
+		"""Returns an instance of ThreadedAsyncioExecutor. It also lazily starts the executor.
+
+		Returns:
+			_ThreadedAsyncioExecutor: an executor used by proxies to submit new coroutines.
+		"""
+		if not self.__coro_thread.started: 
 			self.__coro_thread.start()
 		return self.__coro_thread
 	
 	@property
-	def socket(self): return self.__socket
+	def socket(self): 
+		"""Returns an instance of WebSocketClientProtocol
+
+		Returns:
+			WebSocketClientProtocol: stored instance of websocket.
+		"""
+		return self.__socket
  
 	@socket.setter
 	def socket(self, _socket: WebSocketClientProtocol): 
+		"""Sets an instance of WebSocketClientProtocol 
+
+		Args:
+			_socket (WebSocketClientProtocol): instance of websocket.
+		"""
 		self.__socket = _socket
 		self.__host = _socket.host
 	
 	def close(self):
+		"""Closes all resources, cancels tasks, drops connections.
+		"""
 		print("In close")
 		for proxy in self.__proxies:
 			proxy.teardown()
@@ -206,12 +300,17 @@ class __GameConnectionHandler:
   
 
 class _Proxy(metaclass=ABCMeta):
+	"""Base class of proxies.
+	"""
+	
 	def __init__(self) -> None:
 		self._event = Event()
 		self._task: Task =None
 		_h_conn.proxies.append(self)
 
 	def teardown(self):
+		"""Terminates Proxy object. Sets possessed Event object and cancels, if possible, current task.
+		"""
 		print(f"Terminating: {self}")
 		self._event.set()
 		if self._task and not self._task.cancelled():
@@ -221,6 +320,11 @@ class _Proxy(metaclass=ABCMeta):
 	def _call(self, *args: Any, **kwargs: Any):...
  
 	def __call__(self, *args: Any, **kwds: Any):
+		"""Calls implementation of _call method provided by subclasses.
+
+		Returns:
+			Any: result of _call method delivered by subclass.
+		"""
 		return self._call(*args, **kwds)
 
 	def __get__(self, instance, cls=None):
@@ -287,13 +391,14 @@ class __SendProxy(_Proxy):
 		self.__action_getter = action_getter
 	
 	def _call(self, *args: Any, **kwds: Any) -> Action:
-		""" Send to server a chosen action. 
+		""" Sends to server a chosen action. 
 
 		Returns:
 			Action: Chosen action
 		"""
 		action: Action = self.__action_getter(*args, **kwds)
 		if self._event.is_set(): return action
+  
 		async def __send():
 			coro = _h_conn.socket.send(gzip.compress(orjson.dumps(action.encode())))
 			try:
@@ -351,6 +456,8 @@ class __ReceiveProxy(_Proxy):
 		self._task, _ = _h_conn.coro_executor.submit(__receive())
   
 def cleanup():
+	"""Cleans up the handler of connection with websocket game-server.
+	"""
 	print("In cleanup")
 	_h_conn.close()
 	_h_conn.coro_executor.join()
