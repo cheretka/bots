@@ -9,8 +9,6 @@ class Agent(metaclass=ABCMeta):
 		self.is_learning = False
 		self.current_state = {}
 		self.init_state = {}
-		self.GAME_WIDTH = 0
-		self.GAME_HEIGHT = 0
 	
 	def __init_subclass__(cls) -> None:
 		cls.choose_action = _send_proxy(cls.choose_action)	
