@@ -3,7 +3,6 @@ from abc import ABCMeta, abstractmethod
 from asyncio.events import AbstractEventLoop
 from asyncio.tasks import Task
 import concurrent.futures as cf
-import logging
 from typing import Any, Callable, Coroutine, Dict, List, Type
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
@@ -13,9 +12,10 @@ import orjson
 import gzip
 import asyncio
 from functools import partial
-from threading import Thread, Lock
+from threading import Thread, RLock as Lock
 from multiprocessing import Pipe
 import traceback
+from .. import logger
 
 
 class Event(object):
@@ -91,7 +91,8 @@ class _ThreadedAsyncioExecutor(Thread):
 		Returns:
 			bool: the "stopped" state of thread.
 		"""
-		return self._stopped.is_set()
+		
+		with self._lock: return self._stopped.is_set()
 	
 	@property
 	def started(self) -> bool: 
@@ -122,11 +123,11 @@ class _ThreadedAsyncioExecutor(Thread):
    
 			if handler_list: [handler(exception) for handler in handler_list]
 			else: 
-				print("Unregistered exception occurred: ", type(exception), " -> " , exception)
+				logger.warn("Unregistered exception occurred: ", type(exception), " -> " , exception)
 				traceback.print_exception(type(exception), exception, exception.__traceback__)
 		else:
 			msg = context.get("message", None)
-			if msg: print(msg)
+			if msg: logger.warn(msg)
 
 		if loop.is_running():
 			self.stop()
@@ -177,7 +178,7 @@ class _ThreadedAsyncioExecutor(Thread):
 		try:
 			self._loop.run_forever()
 		finally:
-			print("Closing a loop")
+			logger.warn("Closing a loop")
 			self._loop.close()		
    
 	def cancel_tasks(self):
@@ -188,31 +189,33 @@ class _ThreadedAsyncioExecutor(Thread):
 	def stop(self):
 		"""Stops ThreadedAsyncioExecutor object. Cancels all coroutines that are queued in event-loop system and then stops an event-loop. 
 		"""
+		print()
+	
 		if self.stopped: return
-  
-		with self._lock:
-			print("Cleaning thread...")
-			   
-			async def _shutdown():
-				tasks = []
-    
-				for coro in asyncio.all_tasks(self._loop):
-        
-					print(f"The state of a coroutine at {hex(id(coro))}:", coro._state)	
-					if coro is not asyncio.current_task(self._loop):
-      
-						if not coro.done():
-							coro.cancel()
-							tasks.append(coro)
-				if tasks:
-					print(f"Closing {len(tasks)} tasks")
-					await asyncio.gather(*tasks, loop=self._loop, return_exceptions=True)
+		logger.info("Cleaning thread...")
+		   
+		async def _shutdown():
+			tasks = []
 
-			_, fut = self.submit(_shutdown())
-			fut.add_done_callback(lambda _: self._set_stopped())
-			cf.wait([fut])
-			fut.result()
-			self._loop.stop()				
+			for coro in asyncio.all_tasks(self._loop):
+    
+				logger.info(f"The state of a coroutine at {hex(id(coro))}:", coro._state)	
+				if coro is not asyncio.current_task(self._loop):
+    
+					if not coro.done():
+						coro.cancel()
+						tasks.append(coro)
+			if tasks:
+				logger.info(f"Closing {len(tasks)} tasks")
+				await asyncio.gather(*tasks, loop=self._loop, return_exceptions=True)
+		_, fut = self.submit(_shutdown())
+		fut.add_done_callback(lambda _: self._set_stopped())
+		cf.wait([fut])
+		print("HERESIK_2")
+
+		fut.result()
+		print("HERESIK")
+		self._loop.stop()				
 
 class __GameConnectionHandler:
 	"""Definition of a handler of a connection with a game-server.
@@ -264,34 +267,38 @@ class __GameConnectionHandler:
 	def close(self):
 		"""Closes all resources, cancels tasks, drops connections.
 		"""
-		print("In close")
+		# print("HERES_")
+		logger.info("In close")
 		for proxy in self.__proxies:
 			proxy.teardown()
-   
+		# print("HERES__")
+
 		self.coro_executor.cancel_tasks()
-  
+
 		async def __clean_up_connection():
 			self.__socket.transfer_data_task.cancel()
 			await self.__socket.close_connection()
-			print("Dropped")
+			logger.info("Dropped connection")
 			await asyncio.sleep(0)
 			await self.__socket.close(1000)
-			print("Send code")
+			logger.info("Sent a socket disconnection code")
 			await asyncio.sleep(0)
    
 		if self.__socket is not None:
-			print("cleaning connection...")
-			_, future = self.coro_executor.submit(__clean_up_connection())
-			future.add_done_callback(lambda _: print("Finished an attempt to disconnect from host\n"))
+			# print("HERES___")
 			
-			print("Collecting futures...")
+			logger.info("Cleaning connection...")
+			_, future = self.coro_executor.submit(__clean_up_connection())
+			future.add_done_callback(lambda _: logger.info("Finished an attempt to disconnect from host\n"))
+			
+			logger.info("Collecting futures...")
 			try:
-				print("Collecting:", hex(id(future)))
+				logger.info("Collecting a future at:", hex(id(future)))
 				done, _ = cf.wait([future])
 				for completed_future in cf.as_completed(done): 
 					
 					completed_future.result()
-					print(f"Succesfully disconnected from host: {self.__host}")
+					logger.warn(f"Succesfully disconnected from host: {self.__host}")
 			except:
 				future.set_exception(Exception("Forcibly closed coroutine"))
 				future.cancel()
@@ -311,7 +318,7 @@ class _Proxy(metaclass=ABCMeta):
 	def teardown(self):
 		"""Terminates Proxy object. Sets possessed Event object and cancels, if possible, current task.
 		"""
-		print(f"Terminating: {self}")
+		logger.info(f"Terminating: {self}")
 		self._event.set()
 		if self._task and not self._task.cancelled():
 			self._task.cancel()
@@ -385,9 +392,9 @@ class __SendProxy(_Proxy):
 		"""
 		super().__init__()
 		_h_conn.coro_executor.register_exception(ConnectionClosedError, 
-										   lambda e:print(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
+										   lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
 		_h_conn.coro_executor.register_exception(ConnectionClosedOK, 
-										   lambda e:print("Connection dropped successfully, sending an action has been stopped"))
+										   lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
 		self.__action_getter = action_getter
 	
 	def _call(self, *args: Any, **kwds: Any) -> Action:
@@ -431,9 +438,9 @@ class __ReceiveProxy(_Proxy):
 		"""
 		super().__init__()
 		_h_conn.coro_executor.register_exception(ConnectionClosedError, 
-										   lambda e:print(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
+										   lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
 		_h_conn.coro_executor.register_exception(ConnectionClosedOK, 
-										   lambda e:print("Connection dropped successfully, sending an action has been stopped"))
+										   lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
 		self.__handler = new_message_handler
 	
 	def _call(self, *args: Any, **kwds: Any) -> None:   
@@ -445,11 +452,11 @@ class __ReceiveProxy(_Proxy):
 					coro = _h_conn.socket.recv()
 					message: Data = await coro
 					decompressed = orjson.loads(gzip.decompress(message))
-					logging.debug(f"Obtained data from server; raw={message}; decompressed={decompressed}")
+					logger.info(f"Obtained data from server; raw={message}; decompressed={decompressed}")
 
 					self.__handler(args[0], decompressed)
 			except Exception as e:
-				print(f"Caught an exception: {e}. Ignored...")
+				logger.info(f"Caught an exception: {e}. Ignored...")
 			finally:
 				await asyncio.sleep(0)
 	   
@@ -458,7 +465,8 @@ class __ReceiveProxy(_Proxy):
 def cleanup():
 	"""Cleans up the handler of connection with websocket game-server.
 	"""
-	print("In cleanup")
+	# print("HERES")
+	logger.info("Clean-up procedure of connection handler...")
 	_h_conn.close()
 	_h_conn.coro_executor.join()
 
