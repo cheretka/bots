@@ -1,7 +1,5 @@
-from concurrent.futures import Future
 from multiprocessing import Pool
 from multiprocessing.pool import AsyncResult, Pool as P
-from concurrent.futures.process import ProcessPoolExecutor
 import threading
 import traceback
 from typing import List, Optional, Tuple, Type
@@ -12,8 +10,7 @@ from .agent import Agent
 from .action import Action
 from .. import logger
 import asyncio
-import concurrent.futures as cf
-from time import sleep, time
+from time import sleep
 
 
 __ENV_VARS = {
@@ -46,13 +43,11 @@ class _Bots_Manager:
 					future.get(timeout=timeout)
 					logger.info("Wait for the AsyncResult at: ", hex(id(future)))
 				except TimeoutError as _time:
-					logger.warn("Unable to kill bot process -> ", _time)
-
-	
+					logger.warn("Unable to kill bot process safely -> ", _time)
 	
 			logger.info(f"Pool at: {hex(id(__executor))}, is about to shutdown...")
 			__executor.terminate()
-
+   
 
 def get_session_id(): return __ENV_VARS["session_id"]
 
@@ -95,7 +90,6 @@ async def __make_env(server: str, name: str, game_type: str,
 			session_id = await web_socket.recv()
 			await asyncio.sleep(0)
 	
-			
 	return await __join(server, session_id, bot_name)
 
 async def __join(server: str, session_id: str, bot_name: str):
@@ -182,7 +176,8 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 		except Exception as e:
 			logger.warn(f"BOT: {type(bot)} is dead, exception occurred {e}.")
 			traceback.print_tb(e.__traceback__)
-	wrapper()
+		return int_id
+	return wrapper()
 	
 def spawn_bots(server: str, session_id: str, bot_class: Type[Agent], count: int, **agent_kwds):
 	"""Spawns some random bots on server 
@@ -191,36 +186,35 @@ def spawn_bots(server: str, session_id: str, bot_class: Type[Agent], count: int,
 		server (str): URL of target server
 		session_id (str): session identifier of game
 		bot_class (Type): initializer of bot objects
-		count (int): count of bots to spawn
+		count (int): count of bots to spawn; max of count is 100
 		agent_kwds: agent's constructor parameters
 	"""
 	from sys import platform
 	_MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS = 63 - 2 #2 workers needed as a overhead for ProcessPoolExecutor
- 
+	_TOTAL_MAX = 100
+	count = min(count, _TOTAL_MAX)
 	def __make(count_of_workers: int, curr:int =0):
 		executor = Pool(processes=count_of_workers)
 		
 		_events = [_Event() for _ in range(count_of_workers)]
-		_futures = {num: executor.apply_async(__run_bot, (bot_class, server, session_id, num, _events[num]), agent_kwds, callback=lambda _: logger.info(f"Process of bot No. {num} is finished")) for num in range(curr, curr + count_of_workers)}
+		_futures = {num: executor.apply_async(__run_bot, (bot_class, server, session_id, num, _events[num-curr]), agent_kwds, callback=lambda _: logger.warn(f"Process of bot No. {_} is finished")) for num in range(curr, curr + count_of_workers)}
 		
 		return executor, list( _futures.values()), _events
 
 	if platform == "win32":
 		params = []
 		workers = count - _MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS
-  
+		_curr = 0
 		while workers > 0:
-			params.append(__make(_MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS))
-			sleep(1)
+			params.append(__make(_MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS, _curr))
 			workers -= _MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS
+			_curr += _MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS
 		else:
-			params.append(__make(workers + _MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS))
+			params.append(__make(workers + _MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS, _curr))
 			
 	else:
 		executor, _futures, _events = __make(count)
 		params = [(executor, _futures, _events)]
-
-	
 	
 	return _Bots_Manager(params)
 	

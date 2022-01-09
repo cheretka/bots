@@ -4,6 +4,7 @@ from asyncio.events import AbstractEventLoop
 from asyncio.tasks import Task
 import concurrent.futures as cf
 from typing import Any, Callable, Coroutine, Dict, List, Type
+from asyncio.exceptions import CancelledError
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from websockets.typing import Data
@@ -412,12 +413,13 @@ class __SendProxy(_Proxy):
 				return action
 
 		self._task, future = _h_conn.coro_executor.submit(__send())
-		
-		for f in cf.as_completed([future]):
-			action = f.result()
-   
-		self._task = None
-		return action
+		try:
+			for f in cf.as_completed([future]):
+				action = f.result()
+		except CancelledError: pass
+		finally:
+			self._task = None
+			return action
 	
  
 class __ReceiveProxy(_Proxy):
