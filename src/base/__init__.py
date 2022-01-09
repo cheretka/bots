@@ -8,6 +8,7 @@ from websockets.legacy.client import connect, WebSocketClientProtocol
 from ._gameproxy import connection_proxy as __connection_proxy, cleanup, Event as _Event
 from .agent import Agent
 from .action import Action
+from .stateupdater import StateUpdater
 from .. import logger
 import asyncio
 from time import sleep
@@ -20,6 +21,7 @@ __ENV_VARS = {
 	"game_type":"",
 	"bot_name":""
 }
+
 
 class _Bots_Manager:
 	"""Definition of _Bots_Manager to take care of spawned agents.
@@ -190,14 +192,18 @@ def spawn_bots(server: str, session_id: str, bot_class: Type[Agent], count: int,
 		agent_kwds: agent's constructor parameters
 	"""
 	from sys import platform
-	_MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS = 63 - 2 #2 workers needed as a overhead for ProcessPoolExecutor
+	_MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS = 63 - 2 #2 workers needed as a overhead for ProcessPoolExecutor and multiprocessing.Pool as well
 	_TOTAL_MAX = 100
 	count = min(count, _TOTAL_MAX)
+ 
 	def __make(count_of_workers: int, curr:int =0):
 		executor = Pool(processes=count_of_workers)
 		
 		_events = [_Event() for _ in range(count_of_workers)]
-		_futures = {num: executor.apply_async(__run_bot, (bot_class, server, session_id, num, _events[num-curr]), agent_kwds, callback=lambda _: logger.warn(f"Process of bot No. {_} is finished")) for num in range(curr, curr + count_of_workers)}
+		_futures = {num: executor.apply_async(__run_bot, 
+                                        	(bot_class, server, session_id, num, _events[num-curr]), 
+                                         	agent_kwds, callback=lambda _: logger.info(f"Process of bot No. {_} is finished")
+                        ) for num in range(curr, curr + count_of_workers)}
 		
 		return executor, list( _futures.values()), _events
 

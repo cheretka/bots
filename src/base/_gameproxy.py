@@ -390,9 +390,9 @@ class __SendProxy(_Proxy):
 		"""
 		super().__init__()
 		_h_conn.coro_executor.register_exception(ConnectionClosedError, 
-										   lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
+			lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
 		_h_conn.coro_executor.register_exception(ConnectionClosedOK, 
-										   lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
+			lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
 		self.__action_getter = action_getter
 	
 	def _call(self, *args: Any, **kwds: Any) -> Action:
@@ -437,9 +437,9 @@ class __ReceiveProxy(_Proxy):
 		"""
 		super().__init__()
 		_h_conn.coro_executor.register_exception(ConnectionClosedError, 
-										   lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
+			lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
 		_h_conn.coro_executor.register_exception(ConnectionClosedOK, 
-										   lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
+			lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
 		self.__handler = new_message_handler
 	
 	def _call(self, *args: Any, **kwds: Any) -> None:   
