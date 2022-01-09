@@ -80,6 +80,7 @@ class _ThreadedAsyncioExecutor(Thread):
 		self.daemon = True
 		self._lock = Lock()
 		self._stopped = Event()
+		self._started = Event()
 		self.__tasks: List[Task] = []
 		self.__exception_handlers: Dict[Exception, List[Callable[..., Any]]] = {}
 		self._loop.set_exception_handler(lambda loop, context:partial(self.__handle_errors)(loop, context))
@@ -101,13 +102,12 @@ class _ThreadedAsyncioExecutor(Thread):
 		Returns:
 			bool: the "started" state of thread.
 		"""
-		return self._started.is_set()
+		with self._lock: return self._started.is_set()
  
 	def _set_stopped(self): 
 		"""Sets the "stopped" Event of ThreadedAsyncioExecutor.
 		"""
-		with self._lock:
-			self._stopped.set()
+		with self._lock: self._stopped.set()
  	
 	def __handle_errors(self, loop: AbstractEventLoop, context: Dict[str, Any]):
 		"""Error handler that is run by asyncio every time the exception in a coroutine occurs.
@@ -116,6 +116,7 @@ class _ThreadedAsyncioExecutor(Thread):
 			loop (AbstractEventLoop): active event-loop
 			context (Dict[str, Any]): asyncio exception context
 		"""
+		
 		exception: Exception =context.get("exception", None)
   
 		if exception:
@@ -177,6 +178,7 @@ class _ThreadedAsyncioExecutor(Thread):
 		"""
 		try:
 			self._loop.run_forever()
+		except Exception as e: print(e.__traceback__)
 		finally:
 			logger.warn("Closing a loop")
 			self._loop.close()		
@@ -189,7 +191,6 @@ class _ThreadedAsyncioExecutor(Thread):
 	def stop(self):
 		"""Stops ThreadedAsyncioExecutor object. Cancels all coroutines that are queued in event-loop system and then stops an event-loop. 
 		"""
-		print()
 	
 		if self.stopped: return
 		logger.info("Cleaning thread...")
@@ -211,11 +212,10 @@ class _ThreadedAsyncioExecutor(Thread):
 		_, fut = self.submit(_shutdown())
 		fut.add_done_callback(lambda _: self._set_stopped())
 		cf.wait([fut])
-		print("HERESIK_2")
 
 		fut.result()
-		print("HERESIK")
 		self._loop.stop()				
+
 
 class __GameConnectionHandler:
 	"""Definition of a handler of a connection with a game-server.
@@ -267,11 +267,9 @@ class __GameConnectionHandler:
 	def close(self):
 		"""Closes all resources, cancels tasks, drops connections.
 		"""
-		# print("HERES_")
 		logger.info("In close")
 		for proxy in self.__proxies:
 			proxy.teardown()
-		# print("HERES__")
 
 		self.coro_executor.cancel_tasks()
 
@@ -285,7 +283,6 @@ class __GameConnectionHandler:
 			await asyncio.sleep(0)
    
 		if self.__socket is not None:
-			# print("HERES___")
 			
 			logger.info("Cleaning connection...")
 			_, future = self.coro_executor.submit(__clean_up_connection())
@@ -465,10 +462,13 @@ class __ReceiveProxy(_Proxy):
 def cleanup():
 	"""Cleans up the handler of connection with websocket game-server.
 	"""
-	# print("HERES")
 	logger.info("Clean-up procedure of connection handler...")
 	_h_conn.close()
-	_h_conn.coro_executor.join()
+	try:
+		_h_conn.coro_executor.join(timeout=1)
+	except Exception as e: 
+		print(e)
+		traceback.print_tb(e.__traceback__)
 
 connection_proxy = __ConnectionProxy
 send_proxy = __SendProxy
