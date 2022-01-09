@@ -1,9 +1,8 @@
 from __future__ import annotations
 from abc import ABCMeta, abstractmethod
-from asyncio.events import AbstractEventLoop
 from asyncio.tasks import Task
 import concurrent.futures as cf
-from typing import Any, Callable, Coroutine, Dict, List, Type
+from typing import Any, Callable, Coroutine, List
 from asyncio.exceptions import CancelledError
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
@@ -12,210 +11,12 @@ import orjson
 import gzip
 import asyncio
 from functools import partial
-from threading import Thread, RLock as Lock
-from multiprocessing import Pipe
 import traceback
+
+from .stateupdater import StateUpdater
 from .action import Action
-from .. import logger
-
-
-class Event(object):
-	"""Implementation of Event class, that is based on "pipes" system
-	"""
-	def __init__(self):
-		self._read_fd, self._write_fd = Pipe()
-	
-	def wait(self, timeout=None):
-		"""Waits for a given timeout and get information about the state of the Event
-		
-		Keyword arguments:
-		timeout -- time in seconds to wait
-		Returns: True, if the Event object is set after provided timeout, False otherwise
-  
-		"""
-		
-		return self._read_fd.poll(timeout)
-	
-	def set(self):
-		"""Sets the state of the Event object.
-		"""
-		if not self.is_set():
-			self._write_fd.send(b"1")
-
-	def clear(self):
-		"""Unsets the state of the Event object.
-		"""
-		if self.is_set():
-			self._read_fd.recv()
-
-	def is_set(self):
-		"""Checks if the Event object is in set state.
-		Returns: see wait method
-		"""
-		return self.wait(0)
-
-	def __del__(self):
-		"""Closes the "pipes" system of the Event
-		"""
-		self._read_fd.close()
-		self._write_fd.close()
- 
-	def fileno(self): 
-		"""Returns the file descriptor of obtained "pipes" system.
-
-		Returns:
-			int: a file descriptor of the one of the end of pipe.
-		"""
-		return self._read_fd.fileno()
- 
-
-class _ThreadedAsyncioExecutor(Thread):
-	"""	Defines an executor to take a control over submitted tasks to the asyncio.
-	
-	"""
-	
-	def __init__(self):
-		super().__init__()
-		self._loop = asyncio.new_event_loop()
-		asyncio.set_event_loop(self._loop)
-		self.daemon = True
-		self._lock = Lock()
-		self._stopped = Event()
-		self._started = Event()
-		self.__tasks: List[Task] = []
-		self.__exception_handlers: Dict[Exception, List[Callable[..., Any]]] = {}
-		self._loop.set_exception_handler(lambda loop, context:partial(self.__handle_errors)(loop, context))
-	
-	@property
-	def stopped(self): 
-		"""Returns information whether or not the thread is stopped.
-
-		Returns:
-			bool: the "stopped" state of thread.
-		"""
-		
-		with self._lock: return self._stopped.is_set()
-	
-	@property
-	def started(self) -> bool: 
-		"""Returns information whether or not the thread is started.
-
-		Returns:
-			bool: the "started" state of thread.
-		"""
-		with self._lock: return self._started.is_set()
- 
-	def _set_stopped(self): 
-		"""Sets the "stopped" Event of ThreadedAsyncioExecutor.
-		"""
-		with self._lock: self._stopped.set()
- 	
-	def __handle_errors(self, loop: AbstractEventLoop, context: Dict[str, Any]):
-		"""Error handler that is run by asyncio every time the exception in a coroutine occurs.
-
-		Args:
-			loop (AbstractEventLoop): active event-loop
-			context (Dict[str, Any]): asyncio exception context
-		"""
-		
-		exception: Exception =context.get("exception", None)
-  
-		if exception:
-			handler_list = self.__exception_handlers.get(type(exception), None)
-   
-			if handler_list: [handler(exception) for handler in handler_list]
-			else: 
-				logger.warn("Unregistered exception occurred: ", type(exception), " -> " , exception)
-				traceback.print_exception(type(exception), exception, exception.__traceback__)
-		else:
-			msg = context.get("message", None)
-			if msg: logger.warn(msg)
-
-		if loop.is_running():
-			self.stop()
- 
-	def register_exception(self, exception: Type[Exception], handler: Callable[..., Any]):
-		"""Registers a handler for a given exception type
-
-		Args:
-			exception (Type[Exception]): type of exception to store in handlers' dictionary.
-			handler (Callable[..., Any]): callable to call after that a given type of exception occurred.
-		"""
-		if exception in self.__exception_handlers:
-			self.__exception_handlers[exception].append(handler)
-		else:
-			self.__exception_handlers[exception] = [handler]
-  
-	def submit(self, coro: Coroutine[Any, Any, Any]):
-		"""Submits coroutine into wrapped asyncio event loop.
-
-		Args:
-			coro (Coroutine[Any, Any, Any]): coroutine to run.
-
-		Returns:
-			Tuple[Task, Future]: returns Task and Task wrapped by concurrent.futures.Future
-		"""
-		task = self._loop.create_task(coro)
-		self.__tasks.append(task)
-		fut = asyncio.run_coroutine_threadsafe(self.__schedule_subscription_task(task), self._loop)
-		fut.add_done_callback(lambda _: self.__tasks.remove(task))
-		return task, fut
-	
-	async def __schedule_subscription_task(self, task: Task):
-		"""Schedules given task to await.
-
-		Args:
-			task (Task): task to await
-
-		Returns:
-			Any: value collected from Task object.
-		"""
-		result = await task
-		await asyncio.sleep(0)
-		return result
-	
-	def run(self):
-		"""Runs ThreadedAsyncioExecutor.
-		"""
-		try:
-			self._loop.run_forever()
-		except Exception as e: print(e.__traceback__)
-		finally:
-			logger.warn("Closing a loop")
-			self._loop.close()		
-   
-	def cancel_tasks(self):
-		"""Cancels stored tasks.
-		"""
-		[task.cancel() for task in self.__tasks]
- 
-	def stop(self):
-		"""Stops ThreadedAsyncioExecutor object. Cancels all coroutines that are queued in event-loop system and then stops an event-loop. 
-		"""
-	
-		if self.stopped: return
-		logger.info("Cleaning thread...")
-		   
-		async def _shutdown():
-			tasks = []
-
-			for coro in asyncio.all_tasks(self._loop):
-    
-				logger.info(f"The state of a coroutine at {hex(id(coro))}:", coro._state)	
-				if coro is not asyncio.current_task(self._loop):
-    
-					if not coro.done():
-						coro.cancel()
-						tasks.append(coro)
-			if tasks:
-				logger.info(f"Closing {len(tasks)} tasks")
-				await asyncio.gather(*tasks, loop=self._loop, return_exceptions=True)
-		_, fut = self.submit(_shutdown())
-		fut.add_done_callback(lambda _: self._set_stopped())
-		cf.wait([fut])
-
-		fut.result()
-		self._loop.stop()				
+from ._utils import _ThreadedAsyncioExecutor, Event
+from .. import _logger, _get_var, _get_updater_initialization_params
 
 
 class __GameConnectionHandler:
@@ -268,7 +69,7 @@ class __GameConnectionHandler:
 	def close(self):
 		"""Closes all resources, cancels tasks, drops connections.
 		"""
-		logger.info("In close")
+		_logger.info("In close")
 		for proxy in self.__proxies:
 			proxy.teardown()
 
@@ -277,26 +78,26 @@ class __GameConnectionHandler:
 		async def __clean_up_connection():
 			self.__socket.transfer_data_task.cancel()
 			await self.__socket.close_connection()
-			logger.info("Dropped connection")
+			_logger.info("Dropped connection")
 			await asyncio.sleep(0)
 			await self.__socket.close(1000)
-			logger.info("Sent a socket disconnection code")
+			_logger.info("Sent a socket disconnection code")
 			await asyncio.sleep(0)
    
 		if self.__socket is not None:
 			
-			logger.info("Cleaning connection...")
+			_logger.info("Cleaning connection...")
 			_, future = self.coro_executor.submit(__clean_up_connection())
-			future.add_done_callback(lambda _: logger.info("Finished an attempt to disconnect from host\n"))
+			future.add_done_callback(lambda _: _logger.info("Finished an attempt to disconnect from host\n"))
 			
-			logger.info("Collecting futures...")
+			_logger.info("Collecting futures...")
 			try:
-				logger.info("Collecting a future at:", hex(id(future)))
+				_logger.info("Collecting a future at:", hex(id(future)))
 				done, _ = cf.wait([future])
 				for completed_future in cf.as_completed(done): 
 					
 					completed_future.result()
-					logger.warn(f"Succesfully disconnected from host: {self.__host}")
+					_logger.warn(f"Succesfully disconnected from host: {self.__host}")
 			except:
 				future.set_exception(Exception("Forcibly closed coroutine"))
 				future.cancel()
@@ -316,7 +117,7 @@ class _Proxy(metaclass=ABCMeta):
 	def teardown(self):
 		"""Terminates Proxy object. Sets possessed Event object and cancels, if possible, current task.
 		"""
-		logger.info(f"Terminating: {self}")
+		_logger.info(f"Terminating: {self}")
 		self._event.set()
 		if self._task and not self._task.cancelled():
 			self._task.cancel()
@@ -367,7 +168,7 @@ class __ConnectionProxy(_Proxy):
 		coro = self.__socket_provider(*args, **kwds)
   
 		self._task, future = _h_conn.coro_executor.submit(coro)
-		future.add_done_callback(lambda _: print("Finished an attempt to connect with host\n"))
+		future.add_done_callback(lambda _: _logger.info("Finished an attempt to connect with host"))
   
 		for f in cf.as_completed([future]):
 			socket: WebSocketClientProtocol =f.result()
@@ -390,11 +191,11 @@ class __SendProxy(_Proxy):
 		"""
 		super().__init__()
 		_h_conn.coro_executor.register_exception(ConnectionClosedError, 
-			lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
+			lambda e:_logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
 		_h_conn.coro_executor.register_exception(ConnectionClosedOK, 
-			lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
+			lambda e:_logger.warn("Connection dropped successfully, sending an action has been stopped"))
 		self.__action_getter = action_getter
-	
+		
 	def _call(self, *args: Any, **kwds: Any) -> Action:
 		""" Sends to server a chosen action. 
 
@@ -437,11 +238,22 @@ class __ReceiveProxy(_Proxy):
 		"""
 		super().__init__()
 		_h_conn.coro_executor.register_exception(ConnectionClosedError, 
-			lambda e:logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
+			lambda e:_logger.warn(f"Connection dropped unsuccessfully, sending an action has been stopped with reason: {e.reason} and error code: {e.code}"))
 		_h_conn.coro_executor.register_exception(ConnectionClosedOK, 
-			lambda e:logger.warn("Connection dropped successfully, sending an action has been stopped"))
+			lambda e:_logger.warn("Connection dropped successfully, sending an action has been stopped"))
 		self.__handler = new_message_handler
 	
+	@property
+	def __updater(self) -> StateUpdater:
+		if not hasattr(self, "_state_updater"):
+			game_type = _get_var("game_type")
+			tup = _get_updater_initialization_params(game_type)
+			if tup:
+				updater_type, args, kwargs =  tup
+				self._state_updater = updater_type(*args, **kwargs)
+			else: return None
+		return self._state_updater
+ 
 	def _call(self, *args: Any, **kwds: Any) -> None:   
 		"""	Runs an infinite loop to handle new states. 
 		"""
@@ -451,11 +263,12 @@ class __ReceiveProxy(_Proxy):
 					coro = _h_conn.socket.recv()
 					message: Data = await coro
 					decompressed = orjson.loads(gzip.decompress(message))
-					logger.info(f"Obtained data from server; raw={message}; decompressed={decompressed}")
-
+					_logger.info(f"Obtained data from server; raw={message}; decompressed={decompressed}")
+					if self.__updater:
+						decompressed = self._state_updater(decompressed)
 					self.__handler(args[0], decompressed)
 			except Exception as e:
-				logger.info(f"Caught an exception: {e}. Ignored...")
+				_logger.info(f"Caught an exception: {e}. Ignored...")
 			finally:
 				await asyncio.sleep(0)
 	   
@@ -464,7 +277,7 @@ class __ReceiveProxy(_Proxy):
 def cleanup():
 	"""Cleans up the handler of connection with websocket game-server.
 	"""
-	logger.info("Clean-up procedure of connection handler...")
+	_logger.info("Clean-up procedure of connection handler...")
 	_h_conn.close()
 	try:
 		_h_conn.coro_executor.join(timeout=1)
@@ -476,4 +289,5 @@ connection_proxy = __ConnectionProxy
 send_proxy = __SendProxy
 receive_proxy = __ReceiveProxy
 _h_conn = __GameConnectionHandler()
+
 __all__ = [connection_proxy, send_proxy, receive_proxy, cleanup, Event]
