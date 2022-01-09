@@ -1,11 +1,11 @@
-tensorflow==2.2.0
+tensorflow
 numpy
-scipy==1.4.1
+sklearn
 ipykernel
 jupyter
 ipython
 opencv-python
-cupy
-Keras==2.3.1
-seaborn
 matplotlib
+orjson
+websockets==10.0
+websocket-client

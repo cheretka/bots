@@ -9,6 +9,7 @@ pip-delete-this-directory.txt
 build/
 develop-eggs/
 dist/
+pkg/
 downloads/
 eggs/
 .eggs/
@@ -16,6 +17,7 @@ lib/
 lib64/
 parts/
 sdist/
+.vscode/
 var/
 wheels/
 share/python-wheels/
