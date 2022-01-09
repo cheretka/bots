@@ -7,4 +7,4 @@ logger = logging.getLogger(__name__)
 logger.setLevel(level)
 
 from .base import Agent, Action, make_env, spawn_bots, get_session_id, cleanup, StateUpdater
-from .agarnt import AgarntAction, RandomAgent, CloseFoodAgent
+from .agarnt import AgarntAction, RandomAgent, CloseFoodAgent, AgarntStateUpdater

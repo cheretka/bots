@@ -8,7 +8,6 @@ from asyncio.exceptions import CancelledError
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from websockets.typing import Data
-from .action import Action
 import orjson
 import gzip
 import asyncio
@@ -16,6 +15,7 @@ from functools import partial
 from threading import Thread, RLock as Lock
 from multiprocessing import Pipe
 import traceback
+from .action import Action
 from .. import logger
 
 
