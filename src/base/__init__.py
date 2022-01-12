@@ -170,10 +170,9 @@ def spawn_bots(server: str, session_id: str, bot_class: Type[Agent], count: int,
 		executor = Pool(processes=count_of_workers)
 		
 		_events = [_Event() for _ in range(count_of_workers)]
-		_futures = {num: executor.apply_async(__run_bot, 
-											(bot_class, server, session_id, num, _events[num-curr]), 
-										 	agent_kwds, callback=lambda _: _logger.info(f"Process of bot No. {_} is finished")
-						) for num in range(curr, curr + count_of_workers)}
+		_futures = {num: executor.apply_async(__run_bot, (bot_class, server, session_id, num, _events[num-curr]), 
+										 	  agent_kwds, callback=lambda _: _logger.info(f"Process of bot No. {_} is finished")
+										) for num in range(curr, curr + count_of_workers)}
 		
 		return executor, list( _futures.values()), _events
 
