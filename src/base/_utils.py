@@ -220,7 +220,7 @@ class _Bots_Manager:
 		self.__params = params
   
 	def terminate(self, timeout=10):
-		"""Terminates BotsManager object after given timeout. Sets events to stop managed processes, and collects concurrent.futures.Future objects.
+		"""Terminates BotsManager object after given timeout. Sets events to stop managed processes, and collects multiprocessing.AsyncResult objects.
 
 		Args:
 			timeout (int, optional): time to wait. Defaults to 10.

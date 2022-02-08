@@ -3,7 +3,6 @@ from abc import ABCMeta, abstractmethod
 from asyncio.tasks import Task
 import concurrent.futures as cf
 from typing import Any, Callable, Coroutine, List
-from asyncio.exceptions import CancelledError
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from websockets.typing import Data
@@ -217,7 +216,7 @@ class __SendProxy(_Proxy):
 		try:
 			for f in cf.as_completed([future]):
 				action = f.result()
-		except CancelledError: pass
+		except Exception: pass
 		finally:
 			self._task = None
 			return action
