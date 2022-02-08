@@ -54,6 +54,7 @@ class CloseFoodAgent(Agent):
                 return self.action_provider.decode({"directions":direction})
         print("Random action is chosen instead")
         return self.__rng.choice(self.action_provider.get_all())
+        
     def handle_new_states(self, msg):
         #print(f"Received new state: {msg}s")
         self.current_state = msg
