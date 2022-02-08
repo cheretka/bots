@@ -9,6 +9,7 @@ class GradAgent(Agent):
 		super().__init__(AgarntAction)
 		self.__rng = generator
 		self.last_dir = {"L":True, "D":False, "R":False, "U":False}
+		self.first = True
   
 	def choose_action(self) -> AgarntAction:
 		if self.current_state:
@@ -76,7 +77,11 @@ class GradAgent(Agent):
 		return self.__rng.choice(self.action_provider.get_all())
 
 	def handle_new_states(self, msg):
-		self.current_state = msg
+		if self.first:
+			self.current_state = msg
+			self.first = False
+		else:
+			self.current_state.update(msg)
 
 	def get_velocity(self, max_velocity, radius):
 		log_value = np.log(radius) + 1

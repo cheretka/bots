@@ -10,6 +10,7 @@ class CloseFoodAgent(Agent):
     def __init__(self, generator: np.random.Generator):
         super().__init__(AgarntAction)
         self.__rng = generator
+        self.first = True
   
     def choose_action(self) -> AgarntAction:
         if self.current_state:
@@ -55,8 +56,12 @@ class CloseFoodAgent(Agent):
         return self.__rng.choice(self.action_provider.get_all())
         
     def handle_new_states(self, msg):
-        #print(f"Received new state: {msg}s")
-        self.current_state = msg
+        if self.first:
+            self.current_state = msg
+            self.first = False
+        else:
+            self.current_state.update(msg)
+        
     
     @property
     def is_done(self) -> bool:
