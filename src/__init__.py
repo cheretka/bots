@@ -38,11 +38,11 @@ def register_updater(game_type: str, type: _Type[StateUpdater]):
 def _get_updater_initialization_params(key: str): return _UPDATERS.get(key, None)
 
 from .base import Agent, Action, make_env, spawn_bots, get_session_id, cleanup, StateUpdater
-from .agarnt import AgarntAction, RandomAgent, CloseFoodAgent, AgarntStateUpdater
+from .agarnt import AgarntAction, RandomAgent, CloseFoodAgent, GradAgent, AgarntStateUpdater
 
 __all__ = [
 	Agent, Action, make_env, spawn_bots, get_session_id, cleanup, StateUpdater,
-	AgarntAction, RandomAgent, CloseFoodAgent, AgarntStateUpdater, register_updater, register_updater_args
+	AgarntAction, RandomAgent, CloseFoodAgent, GradAgent, AgarntStateUpdater, register_updater, register_updater_args
 ]
 
 register_updater("agarnt", AgarntStateUpdater)
