@@ -52,7 +52,6 @@ class CloseFoodAgent(Agent):
                     direction['U'] = True
                 if not np.any(list(direction.values())): direction['U'] = True
                 return self.action_provider.decode({"directions":direction})
-        print("Random action is chosen instead")
         return self.__rng.choice(self.action_provider.get_all())
         
     def handle_new_states(self, msg):
