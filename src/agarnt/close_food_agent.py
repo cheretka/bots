@@ -60,7 +60,7 @@ class CloseFoodAgent(Agent):
             self.current_state = msg
             self.first = False
         else:
-            self.current_state.update(msg)
+            self.current_state= (msg)
         
     
     @property
