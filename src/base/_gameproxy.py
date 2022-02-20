@@ -98,7 +98,7 @@ class __GameConnectionHandler:
 					completed_future.result()
 					_logger.warn(f"Succesfully disconnected from host: {self.__host}")
 			except:
-				future.set_exception(Exception("Forcibly closed coroutine"))
+				
 				future.cancel()
 	
 		self.coro_executor.stop()

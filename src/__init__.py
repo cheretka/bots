@@ -14,7 +14,9 @@ _ENV_VARS = {
 	"server":"",
 	"session_id":"",
 	"game_type":"",
-	"bot_name":""
+	"bot_name":"",
+	"ws_port":f"{os.environ.get('WS_PORT', 2137)}",
+	"http_port":f"{os.environ.get('PORT', 5000)}"
 }
 
 _UPDATERS: _Dict[str, _Tup[_Type[StateUpdater], _Tup[_Any], _Dict[str, _Any]]] = {

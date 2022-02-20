@@ -226,15 +226,18 @@ class _Bots_Manager:
 			timeout (int, optional): time to wait. Defaults to 10.
 		"""
 		for __executor, __futures, __events in self.__params:
+			
 			for event in __events:
 				event.set()
 
 			for future in __futures:
 				try:
-					future.get(timeout=timeout)
+					
 					_logger.info("Wait for the AsyncResult at: ", hex(id(future)))
-				except TimeoutError as _time:
-					_logger.warn("Unable to kill bot process safely -> ", _time)
+					future.get(timeout=timeout)
+				except Exception as _time:
+					_logger.warn(f"Unable to kill bot process safely -> {type(_time)}")
 	
 			_logger.info(f"Pool at: {hex(id(__executor))}, is about to shutdown...")
 			__executor.terminate()
+			__executor.close()
