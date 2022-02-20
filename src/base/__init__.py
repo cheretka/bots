@@ -18,7 +18,7 @@ def get_session_id():
 
 def make_env(server: str, name: str, game_type: str, 
 				   bot_name: str, session_id: Optional[str] =None,
-				   join: bool =False) -> WebSocketClientProtocol:
+				   join: bool =False, spectator=False) -> WebSocketClientProtocol:
 	"""Makes the environment, that is, creates or joins to game based on provided server URL, name of game and session identifier
 
 	Args:
@@ -37,7 +37,7 @@ def make_env(server: str, name: str, game_type: str,
 	"""
 	
 
-	socket: WebSocketClientProtocol = __make_env(server, name, game_type, bot_name, session_id, join)
+	socket: WebSocketClientProtocol = __make_env(server, name, game_type, bot_name, session_id, join, spectator)
 	
 	_logger.warn(f"Established connection at: {socket.host}")
 	return socket
@@ -45,18 +45,18 @@ def make_env(server: str, name: str, game_type: str,
 @__connection_proxy
 async def __make_env(server: str, name: str, game_type: str, 
 				   bot_name: str, session_id: Optional[str] =None,
-				   join: bool =False) -> WebSocketClientProtocol:
+				   join: bool =False, spectator=False) -> WebSocketClientProtocol:
 	_set_var("name", name)
- 
+	_set_var('game_type', game_type)
 	if not join:
 		url = f"{server}/create_game?name={name}&type={game_type}"
 		async with connect(url) as web_socket:
 			session_id = await web_socket.recv()
 			await asyncio.sleep(0)
 
-	return await __join(server, session_id, bot_name)
+	return await __join(server, session_id, bot_name, spectator)
 
-async def __join(server: str, session_id: str, bot_name: str):
+async def __join(server: str, session_id: str, bot_name: str, spectator=False):
 	"""Joins as bot to a session of given server.
 
 	Args:
@@ -73,20 +73,20 @@ async def __join(server: str, session_id: str, bot_name: str):
 	if not session_id: 
 		raise ValueError("Provided session identifier is empty, if you want to join to exisiting game, provide valid session id")
 
-	url = f"{server}/join_to_game?player_name={bot_name}&session_id={session_id}&is_spectator=False"
+	url = f"{server}/join_to_game?player_name={bot_name}&session_id={session_id}&is_spectator={spectator}"
  
 	socket = await connect(url)
-	game_type = await socket.recv()
-	await asyncio.sleep(0)
+	#game_type = await socket.recv()
+	# await asyncio.sleep(0)
  
 	_set_var("server", server)
-	_set_var("game_type", game_type)
+	
 	_set_var("session_id", session_id)
 	_set_var("bot_name", bot_name)
-	
+
 	return socket
 
-def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int, evt: _Event, **agent_kwds):
+def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int, evt: _Event, game_type:str, **agent_kwds):
 	"""Helper function for bot execution
 
 	Args:
@@ -97,12 +97,12 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 	"""
 	
 	bot_name = f"{bot_class.__name__}_{int_id}"
- 
+	
 	def wrapper():
 		"""Wrapper for networking tasks execution during bot interaction with game.
 		"""
 		from sys import platform
-  
+		import signal
 		if platform == "win32":
 			import win32api, win32process, win32con
 
@@ -112,7 +112,7 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 		else:
 			from os import nice
 			nice(20)
-			
+		_set_var('game_type', game_type)	
 		async def connect_to_url(bot_name): return await __join(server, session_id, bot_name)
 
 		_ = __connection_proxy(connect_to_url)(bot_name)
@@ -127,8 +127,14 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 			
 			else: 
 				_logger.info(f"Cleaning up bot. No {int_id}")
-				cleanup()
+				terminate_bot()	
 			
+		def terminate_bot(*args, **kwargs):
+			global done
+			done = False
+			evt.set()
+			cleanup()
+		signal.signal(signal.SIGINT, terminate_bot)
 		conn_cleaner = threading.Thread(daemon=True, target=poll_and_clean)
 		conn_cleaner.start()
 		bot.handle_new_states(None)
@@ -141,7 +147,7 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 				_ = bot.choose_action()
 				_logger.info(f"Chosen action {_} goes brr")
 				done = bot.is_done
-			else: _logger.warn(f"BOT: {type(bot)} is dead")
+			else: print(f"BOT: {type(bot)} is dead")
    
 		except Exception as e:
 			_logger.warn(f"BOT: {type(bot)} is dead, exception occurred {e}.")
@@ -161,6 +167,18 @@ def spawn_bots(server: str, session_id: str, bot_class: Type[Agent], count: int,
 		count (int): count of bots to spawn; max of count is 100
 		agent_kwds: agent's constructor parameters
 	"""
+	if _get_var('game_type') == "":
+		import requests as rq
+		import urllib3.util.url as u
+		url: u.Url = u.parse_url(server)
+		http_port = _get_var('http_port')
+		url = u.Url(scheme='http',
+                	host=url.host,
+                  	port=int(http_port)).url
+		
+		response = rq.get(f"{url}/games/{session_id}").json()
+		_set_var('game_type', response.get('game_type', ''))
+ 
 	from sys import platform
 	_MAX_COUNT_OF_WIN32_WAIT_FOR_MULTIPLE_OBJECTS = 63 - 2 #2 workers needed as a overhead for ProcessPoolExecutor and multiprocessing.Pool as well
 	_TOTAL_MAX = 100
@@ -170,7 +188,7 @@ def spawn_bots(server: str, session_id: str, bot_class: Type[Agent], count: int,
 		executor = Pool(processes=count_of_workers)
 		
 		_events = [_Event() for _ in range(count_of_workers)]
-		_futures = {num: executor.apply_async(__run_bot, (bot_class, server, session_id, num, _events[num-curr]), 
+		_futures = {num: executor.apply_async(__run_bot, (bot_class, server, session_id, num, _events[num-curr], _get_var('game_type')), 
 										 	  agent_kwds, callback=lambda _: _logger.info(f"Process of bot No. {_} is finished")
 										) for num in range(curr, curr + count_of_workers)}
 		
