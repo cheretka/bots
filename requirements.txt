@@ -1,4 +1,4 @@
-tensorflow
+# tensorflow
 numpy
 sklearn
 ipykernel
@@ -9,3 +9,4 @@ matplotlib
 orjson
 websockets==10.0
 websocket-client
+urllib3

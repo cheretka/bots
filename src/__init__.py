@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging as _logging
 import os
+
 from typing import Any as _Any, Type as _Type, Dict as _Dict, Tuple as _Tup
 
 _level = _logging.WARNING if 'PRODUCTION' in os.environ else _logging.DEBUG
@@ -13,7 +14,9 @@ _ENV_VARS = {
 	"server":"",
 	"session_id":"",
 	"game_type":"",
-	"bot_name":""
+	"bot_name":"",
+	"ws_port":f"{os.environ.get('WS_PORT', 2137)}",
+	"http_port":f"{os.environ.get('PORT', 5000)}"
 }
 
 _UPDATERS: _Dict[str, _Tup[_Type[StateUpdater], _Tup[_Any], _Dict[str, _Any]]] = {
@@ -37,12 +40,13 @@ def register_updater(game_type: str, type: _Type[StateUpdater]):
 def _get_updater_initialization_params(key: str): return _UPDATERS.get(key, None)
 
 from .base import Agent, Action, make_env, spawn_bots, get_session_id, cleanup, StateUpdater
-from .agarnt import AgarntAction, RandomAgent, CloseFoodAgent, AgarntStateUpdater
+from .agarnt import AgarntAction, RandomAgent, CloseFoodAgent, GradAgent, AgarntStateUpdater
 
 __all__ = [
 	Agent, Action, make_env, spawn_bots, get_session_id, cleanup, StateUpdater,
-	AgarntAction, RandomAgent, CloseFoodAgent, AgarntStateUpdater, register_updater, register_updater_args
+	AgarntAction, RandomAgent, CloseFoodAgent, GradAgent, AgarntStateUpdater, register_updater, register_updater_args
 ]
 
 register_updater("agarnt", AgarntStateUpdater)
 register_updater_args("agarnt", {})
+
