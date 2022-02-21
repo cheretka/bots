@@ -133,7 +133,6 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 			global done
 			done = False
 			evt.set()
-			cleanup()
 		signal.signal(signal.SIGINT, terminate_bot)
 		conn_cleaner = threading.Thread(daemon=True, target=poll_and_clean)
 		conn_cleaner.start()
@@ -148,11 +147,12 @@ def __run_bot(bot_class: Type[Agent], server: str, session_id: str, int_id: int,
 				_logger.info(f"Chosen action {_} goes brr")
 				done = bot.is_done
 			else: print(f"BOT: {type(bot)} is dead")
+				
    
 		except Exception as e:
 			_logger.warn(f"BOT: {type(bot)} is dead, exception occurred {e}.")
 			traceback.print_tb(e.__traceback__)
-   
+		finally: cleanup()
 		return int_id
 
 	return wrapper()
