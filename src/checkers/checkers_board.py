@@ -1,34 +1,20 @@
 import copy
 from copy import deepcopy
-
+from typing import Any, Dict
 
 class CheckersBoard:
 
-    def __init__(self):
-        # self.board = [[' ', 'r', ' ', 'r', ' ', 'r', ' ', 'r'],
-        #               ['r', ' ', 'r', ' ', 'r', ' ', 'r', ' '],
-        #               [' ', 'r', ' ', 'r', ' ', 'r', ' ', 'r'],
-        #               [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
-        #               [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
-        #               ['a', ' ', 'a', ' ', 'a', ' ', 'a', ' '],
-        #               [' ', 'a', ' ', 'a', ' ', 'a', ' ', 'a'],
-        #               ['a', ' ', 'a', ' ', 'a', ' ', 'a', ' ']]
+    def __init__(self, state: Dict[str, Dict[str, bool]]):
 
-        self.board = [[' ', 'r', ' ', ' ', ' ', ' ', ' ', ' '],
-                      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
-                      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
-                      [' ', ' ', 'a', ' ', 'a', ' ', ' ', ' '],
-                      [' ', 'a', ' ', 'a', ' ', ' ', ' ', ' '],
-                      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
-                      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
-                      [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ']]
+        self.board = state['board']
+        self.current_player = state['player']
 
-        self.current_player = "r"
         self.steps_without_hitting = {"r": 0, "a": 0}
-        self.last_move = []
-        self.your_move = None
-        self.your_letter = None
-        self.game_status = None
+
+        self.last_move = state['last_move']
+        self.game_status = state['game_status']
+        self.chosen_move = None
+
 
 
     def get_win(self):
