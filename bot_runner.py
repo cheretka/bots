@@ -12,9 +12,9 @@ if __name__ == "__main__":
 	signal.signal(signal.SIGINT, terminate_bots)
 	gen= np.random.default_rng(2137)
 
-	manager = spawn_bots("ws://192.168.0.38:5000/",
-                      	 "session_f84ac459583531eb",
-						 RandomAgent,
+	manager = spawn_bots("ws://127.0.0.1:2137/",
+                      	 "session_dac120c9b2848426",
+						 RandomBot,
 						 1,
 						 generator=gen)
 	print(manager)
