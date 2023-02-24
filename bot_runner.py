@@ -13,7 +13,7 @@ if __name__ == "__main__":
 	gen= np.random.default_rng(2137)
 
 	manager = spawn_bots("ws://127.0.0.1:2137/",
-                      	 "session_b9d00f6c7d960779",
+                      	 "session_65a369d72b64deef",
 						 RandomBot,
 						 1,
 						 generator=gen)

@@ -15,7 +15,7 @@ class RandomBot(Agent):
         if self.current_state and self.current_state.my_move:
             chosen_action = self.__rng.choice(self.current_state.get_possible_moves())
             print("move\n", chosen_action)
-            act = CheckersAction(chosen_action)
+            act = CheckersAction(chosen_action.tolist())
             return act
 
         return CheckersAction([])
