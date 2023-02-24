@@ -6,7 +6,6 @@ class Action():
 	"""Abstract class for game action.
 	"""
 	_all = None
-	_board = None
 
 	def __init__(self, *args) -> None:
 		pass
