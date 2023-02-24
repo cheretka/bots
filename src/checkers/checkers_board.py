@@ -14,6 +14,7 @@ class CheckersBoard:
         self.last_move = state['last_move']
         self.game_status = state['game_status']
         self.chosen_move = None
+        self.my_move = state["your_move"]
 
 
 

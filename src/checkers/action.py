@@ -1,25 +1,17 @@
 from __future__ import annotations
-from ..base.action import Action
-from enum import Enum
-from typing import List, Dict
+
+from typing import Dict
+
 from .checkers_board import CheckersBoard
+from ..base.action import Action
+
 
 class CheckersAction(Action, CheckersBoard):
 
-    def __init__(self, *args) -> None:
-        self.board_state = None
-
-    @classmethod
-    def get_all(cls):
-        print("cls", cls)
-        return cls.board_state.get_possible_moves()
-
-    def encode(self) -> Dict[str, Dict[str, bool]]:
-        return {"move": self.board_state.chosen_move}
+    def encode(self) -> Dict[str, array]:
+        return {"move": [[0, 0], [1, 1]]}
 
     @classmethod
     def decode(cls, state: Dict[str, Dict[str, bool]]):
-        newob = CheckersAction()
-        newob.board_state = CheckersBoard(state)
-        cls.board_state = CheckersBoard(state)
-        return CheckersBoard(state)
+        print("I dont need this decode() function")
+        return Null
